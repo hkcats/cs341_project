@@ -1,0 +1,70 @@
+#include <Arduino.h>
+#include <WiFi.h> //Connect to WiFi Network
+#include <TFT_eSPI.h> // Graphics and font library for ST7735 driver chip
+#include <SPI.h> //Used in support of TFT Display
+#include <string.h>  //used for some string handling and processing.
+#include <user_setup.h> //user for var defs
+
+#define BACK_PIN 27
+#define PLAY_PIN 12
+#define NEXT_PIN 14
+
+// -----------------------------------
+
+// const char* ssid = "eduroam";
+// const char* username = "harmanpreet.kaur002@umb.edu";
+// const char* password = "password";
+
+const char* ssid = "Peacock";
+const char* password = "anandpreet";
+
+// -----------------------------------
+
+unsigned long previousTime = 0;
+const long interval = 1000; // == 1 second
+
+// put function declarations here:
+int myFunction(int, int);
+
+// variable declarations
+int old_back=1, old_play=1, old_next=1;
+int new_back, new_play, new_next;
+
+void setup() {
+  Serial.begin(9600); //increase so serial monitor doesnt get clogged up
+
+  // Set the LED pin as an output
+
+  //set button pins as input
+  pinMode(BACK_PIN, INPUT_PULLUP);
+  pinMode(PLAY_PIN, INPUT_PULLUP);
+  pinMode(NEXT_PIN, INPUT_PULLUP);
+}
+
+void loop() {
+  // digitalWrite(BACK_PIN, HIGH); // Turn the LED on
+  
+  new_back = digitalRead(BACK_PIN);
+  new_play = digitalRead(PLAY_PIN);
+  new_next = digitalRead(NEXT_PIN);
+
+  if (new_play < old_play){
+    Serial.println("PLAY");
+  } else if (new_next < old_next){
+    Serial.println("NEXT");
+  } else if (new_back < old_back){
+    Serial.println("BACK");
+  }
+  
+  if (millis() - previousTime >= interval){
+    previousTime = millis();
+
+    Serial.printf("\nBack: %d \nPlay: %d \nNext: %d\n", old_back, old_play, old_next);
+  }
+  old_back = new_back; old_play = new_play; old_next = new_next;
+}
+
+// put function definitions here:
+int myFunction(int x, int y) {
+  return x + y;
+}
