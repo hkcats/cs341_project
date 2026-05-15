@@ -6,7 +6,14 @@
 #include <SD.h>
 #include <string.h>
 #include <ArduinoJson.h>
+#include <TJpg_Decoder.h>
 #include <tokens.h> //user for var defs
+
+#define FS_NO_GLOBALS
+#include <FS.h>
+#ifdef ESP32
+  #include "SPIFFS.h" // ESP32 only
+#endif
 
 #define TFT_MOSI 13
 #define TFT_SCLK 14
@@ -50,6 +57,28 @@ void printf(Args... args){
   tft.printf(args...);
 }
 
+//render things
+
+// end bitmap things
+
+
+bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap)
+{
+   // Stop further decoding as image is running off bottom of screen
+  if ( y >= tft.height() ) return 0;
+
+  // This function will clip the image block rendering automatically at the TFT boundaries
+  // tft.pushImage(x, y, w, h, bitmap);
+
+  // This might work instead if you adapt the sketch to use the Adafruit_GFX library
+  tft.drawRGBBitmap(x, y, bitmap, w, h);
+
+  // Return 1 to decode next block
+  return 1;
+}
+
+
+
 
 void setup() {
   Serial.begin(115200); //begin serial
@@ -63,6 +92,12 @@ void setup() {
   tft.setTextWrap(true);
   tft.setTextColor(ST77XX_WHITE);
   tft.setCursor(0, 0);
+
+
+  // The jpeg image can be scaled by a factor of 1, 2, 4, or 8
+  TJpgDec.setJpgScale(1);
+  // The decoder must be given the exact name of the rendering function above
+  TJpgDec.setCallback(tft_output);
 
   ////////////////////// WIFI BEGIN ///////////////////////////
   //add timeout/restart
@@ -78,16 +113,21 @@ void setup() {
   printf("to: %s\n", ssid);
   printf("local IP address: %s\n", WiFi.localIP().toString());
 
-  // tft.fillScreen(ST7735_BLACK);
+  tft.fillScreen(ST7735_BLACK);
 
   ////////////////////// WIFI END //////////////////////////////
+  ////////////////////// HELPER FUNCTIONS //////////////////////
 
   
+
+  ////////////////////// HELPER FUNCTIONS END//////////////////////
+  
+  delay(100);
   if (!SD.begin(SD_CS, spi)){
     Serial.println("sd.begin() failed :(");
     return;
   }
-  println("sd began");
+  Serial.println("sd began");
 
 
 
@@ -97,17 +137,42 @@ void setup() {
   char response_buffer[OUT_BUFFER_SIZE]; //char array buffer to hold HTTP response
 
 
-  char album_url[500] = "https://i.scdn.co/image/ab67616d00001e02ff9ca10b55ce82ae553c8228";
+  char album_url[500];
+  char filename[500];
 
   int httpCode = 0;
   JsonDocument doc;
   DeserializationError error;
 
-  char access_token[500] = "Bearer BQB0XNxpXgBhuCugELdn8C8IsN0lGuA2NYvIChNLXzRzf2Zzv3uA7koAQb0HN3Qs0wY7g-X4IfJ_zjwGWVkW5lBf1A9WiTZuK-PCoqy_mV87UVwLloouQySKwF5u_WvjRcfcxxd1xijJnXbyASxGbGwbpr95eoBxOxMSW7X9kl6D9xZkvQpLezkcAQSxzxbhYv-MNeNWci754BMx5c7RjMLg_z3HLKwGrKYBvt-Z0KaOtur6gpxNO4G0R9A";
-  // char refresh_token[500] = "AQAWDl0LqmghRViGap6P-atB0ZCg6FEYy5iax8FZIR4H3lQUgo2V2G4mb0hOy8exVLycvTQnjbVdJsdvj0vWBYdkU_DH8ECj7DmZahtgDIUFqAU-Q4s6xQn7D4jfXfycgag";
-  
-  Serial.println(access_token);
+  char access_token[500];
 
+  // add a loop to keep trying until valid access_token?
+  bool getAccessToken = true;
+  if(getAccessToken){
+      // access token retreival from refresh; to be done every hour
+      Serial.println(ESP.getFreeHeap());
+      
+      http.begin("https://accounts.spotify.com/api/token");
+      http.addHeader("Authorization", authorization);
+      http.addHeader("content-type", "application/x-www-form-urlencoded");
+      snprintf(request_buffer, IN_BUFFER_SIZE, "grant_type=refresh_token&refresh_token=%s", refresh_token);
+      httpCode = http.POST(request_buffer);
+      
+      doc.clear();
+      error = deserializeJson(doc, http.getString());
+      http.end();
+      if (error) {
+          Serial.printf("Parse failed: %s", error.c_str());
+          return;
+      }
+      if (httpCode != HTTP_CODE_OK){
+        Serial.printf("Error fetching access code: %d",httpCode);
+        // Serial.printf(doc["error"]["message"]);
+        return;
+      }
+      const char* temp = doc["access_token"];
+      snprintf(access_token, 500, "Bearer %s", temp);
+    }
 
   //play album 
 
@@ -128,55 +193,65 @@ void setup() {
   doc.clear();
   error = deserializeJson(doc, http.getString());
   http.end();
+
   if (error) {
       Serial.printf("Parse failed: %s", error.c_str());
       return;
   }
-
   if (httpCode != HTTP_CODE_OK){
     Serial.printf("Error getting playback info: %d",httpCode);
     Serial.printf(doc["error"]["message"]);
     return;
   }
-  Serial.println("about to get album url");
+  Serial.println("about to get album id/url");
 
-  JsonArray images = doc["item"]["album"]["images"];
-  bool found = false;
-  for(int i = 0; i < images.size(); i++){
-    if(images[i]["height"].as<int>() < 100){
-      strcpy(album_url, images[i]["url"]);
-      found = true;
-      break;
+  snprintf(filename, 500, "/%s.jpeg", doc["item"]["album"]["id"].as<const char*>());
+  Serial.printf("filename: %s", filename);
+
+  if(!SD.exists(filename)){
+    Serial.println("getting album url");
+    JsonArray images = doc["item"]["album"]["images"];
+    bool found = false;
+    for(int i = 0; i < images.size(); i++){
+      if(images[i]["height"].as<int>() < 100){
+        strcpy(album_url, images[i]["url"].as<const char*>());
+        found = true;
+        break;
+      }
     }
+    if(!found){
+      strcpy(album_url, doc["item"]["album"]["images"][0]["url"].as<const char*>());
+    }
+
+    Serial.printf("woo, got album url! %s\n", album_url);
+
+    // save image to SD card
+    http.begin(album_url);
+    // http.addHeader("Authorization", token);
+    httpCode = http.GET();
+
+    Serial.println("http gotten");
+
+    if (httpCode == HTTP_CODE_OK){
+      File file = SD.open(filename, FILE_WRITE);
+      http.writeToStream(&file);
+      file.close();
+    }
+    http.end();
+    Serial.println("saved jpeg to sd");
   }
-  if(!found){
-    strcpy(album_url, doc["item"]["album"]["images"][0]["url"]);
-  }
 
-  Serial.printf("woo, got album url! %s\n", album_url);
+  Serial.println("in to display!");
 
+  uint16_t w = 0, h = 0;
+  TJpgDec.getSdJpgSize(&w, &h, filename);
+  Serial.print("Width = "); Serial.print(w); Serial.print(", height = "); Serial.println(h);
 
-
-
-
-
+  // Draw the image, top left at 0,0
+  TJpgDec.drawSdJpg(0, 0, filename);
 
 
-  
-  http.begin(album_url);
-  // http.addHeader("Authorization", token);
-  httpCode = http.GET();
-
-  println("http gotten");
-
-  if (httpCode == HTTP_CODE_OK){
-    File file = SD.open("/test.jpeg", FILE_WRITE);
-    http.writeToStream(&file);
-    file.close();
-  }
-  http.end();
-
-  print("done!");
+  Serial.println("done!");
 
 
 }
