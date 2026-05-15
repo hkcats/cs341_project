@@ -4,7 +4,10 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <SD.h>
-// #include <user_setup.h> //user for var defs
+#include <base64.h>
+#include <string.h>
+#include <ArduinoJson.h>
+#include <tokens.h> //user for var defs
 
 #define TFT_MOSI 13
 #define TFT_SCLK 14
@@ -14,6 +17,8 @@
 
 #define SD_CS 5
 #define SD_MISO 12
+// sd_mosi 13
+// sd_clk 14
 // #define SD_CONFIG SdioConfig(TFT_SCLK, TFT_MOSI, SD_MISO)
 
 // SD sd;
@@ -55,6 +60,8 @@ void setup() {
 
   SPI.begin(TFT_SCLK, SD_MISO, TFT_MOSI, -1);
 
+  
+
   tft.initR(INITR_BLACKTAB);
 
   tft.fillScreen(ST77XX_BLACK);
@@ -80,30 +87,191 @@ void setup() {
 
   ////////////////////// WIFI END //////////////////////////////
 
+
+
+
+  const uint16_t IN_BUFFER_SIZE = 1000; //size of buffer to hold HTTP request
+  const uint16_t OUT_BUFFER_SIZE = 1000; //size of buffer to hold HTTP response
+  char request_buffer[IN_BUFFER_SIZE]; //char array buffer to hold HTTP request
+  char response_buffer[OUT_BUFFER_SIZE]; //char array buffer to hold HTTP response
+
+
+
+
   //temp testing
-  const char* album_id = "0zkgIyTdpvOpV5z4oK7c2j";
-  const char* album_url = "https://i.scdn.co/image/ab67616d00001e02ff9ca10b55ce82ae553c8228";
+  const char* album_id = "29dl63pyzkkAPZSY8vSqlD";
+  char album_url[500] = "https://i.scdn.co/image/ab67616d00001e02ff9ca10b55ce82ae553c8228";
 
-  // const char* severname = "https://sync.api.cloudconvert.com/v2/jobs";
+  //post for authorization
+  const char* client_id = "8ec3fea2b42f42338ed8f3ca17dc7800";
+  const char* redirect_uri = "http://127.0.0.1:3000";
+  int httpCode = 0;
+  JsonDocument doc;
+  DeserializationError error;
 
-  // const char* token = "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiNTc2MTJhM2EwMDE5OGQ5ZjY2NGI4YjhkM2FmZTNhYzFlZjJjMWY1ODU5YjNhMjkxZjUyMzkzMjk5ZWE2NDZjYmQzYWVkMjc2OTM1N2U0YjYiLCJpYXQiOjE3NzYwMzY2MzcuMzc4NzE2LCJuYmYiOjE3NzYwMzY2MzcuMzc4NzE3LCJleHAiOjQ5MzE3MTAyMzcuMzczNDg4LCJzdWIiOiI3NTA5MzgzNCIsInNjb3BlcyI6WyJ0YXNrLnJlYWQiLCJ0YXNrLndyaXRlIiwicHJlc2V0LnJlYWQiXX0.VxLtg6wZu3-e7d9WOxXr3TcJ_NswvkXF_R1lzkpX4ILvE59oiewu3rzXZMo9bZ3SgxvMN9qxi5t79hUHPkOSLaQ25Z18r1jORzGHlRs__EfHnnN8Km9HoGpKj8JjUEiyB71CuRl2NdIyU_SbZObn4tJTr1nuvhWsGdiEkfx6VFR5KigTEGMqptfqReSzabo8GiS3UxMFoS9pohS7iUuFYTlTmEopitSgIdTakn4lKyliR2ZbEYHwG8MNXaNiDze8sBTTvcw_SnS21Ne-BOYXXSfbZmF9NIkNLMfBILsQ2B77LUPnyO4ESseqKerO5Ghw4lcFLCE4ARBjtBtXvLGNMvRvr-7E3g64rsA7SRGEPpW5BOUvvKAgjH0K4i4dESURjxyzRcpCal9fwd9iEnXQ7y1XCPPQI1olL-9aGZy7I0HIVxos-mcaAh0ENQQH-5Ln4mz2DemMX4iUCq6TXdClIg1uk33EeDGqg8XvoOt1r2Ki4SmDIBOKQLmibkNs5aj7Uc6kpoW7Za2BT5jxnfTs4sjD4irjILGCk32K0kRj2qYmOpYijiLbO26FHZKE1yi0i7pOJJ03zBwWAGNXN6DQFgG24DcuLMZkjwQGQ-DDKsdN270j_zNHidDx7bTN-ISVL9MIN19XBiS55fH55p6jrOUNsNPCuop6Ji2_S0_Hn0w";
+  // http.begin("https://accounts.spotify.com/authorize?client_id=8ec3fea2b42f42338ed8f3ca17dc7800&response_type=code&redirect_uri=http://127.0.0.1:3000");
   
+  // Serial.println("created request for authorization");
+  // http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); 
+  // httpCode = http.GET();
+
+  // if (httpCode != HTTP_CODE_OK && httpCode != 303){
+  //   Serial.printf("Error with authorization: %d",httpCode);
+  //   return;
+  // }
+  // // Serial.println(http.getString());
+  // Serial.println(http.header("Location"));
+
+  // doc.clear();
+  // error = deserializeJson(doc, http.getString());
   
+  // http.end();
+  
+  // if (error) {
+  //     Serial.printf("Parse failed: %s", error.c_str());
+  //     return;
+  // }
+  
+  // const char* code = "AQBzzrV6GAsgHbnLvNbaaeGA7Fzstl4lOc95ffh6tPhUidlpZQvcAeF9AMHbFPBNDCmfyPzBBoGWZZo4DGBQ3m2HA2pS1EzhH9-xNWbTeDxLjdPKC3D5J_vpmr0x6XT4wmW7CDZVIZicyY5V-FRyDkKCb-lqMAnsmQ";
+  // Serial.println("woo, code gotten!");
+  // Serial.println(CODE);
+
+
+  //post for token
+
+  //https://accounts.spotify.com/authorize?response_type=code&client_id=8ec3fea2b42f42338ed8f3ca17dc7800&scope=user-read-currently-playing%20user-read-playback-state&redirect_uri=http://127.0.0.1:3000
+
+  // const char* client_id = "8ec3fea2b42f42338ed8f3ca17dc7800";
+  // const char* client_secret = "724c465c61d445908eb66810abe242c5";
+
+  char access_token[500] = "Bearer BQA24EZxHN-_DvPtkl0f7T2st3zrS8ADqLH9HhYk7DPBxQtIJtQoqluMbcBHujMVQ0fbFQg3MjiWc02H--Ov9lRjIG_OHPe-ls6OcBjTSqDNIM8rpkENAUUsgKrwuFUQCCfOmfTQcYolUyvgHg3dyQXnbTmpte7NXJe6TRWLVX6hm2NGLG_A0GUp7di4kC8MdVWM1JeqoRjsZFFQ6W6jKvX9PnQulKft1jumILvT3DOcioFALvbEEOrdNq8";
+  char refresh_token[500] = "AQAWDl0LqmghRViGap6P-atB0ZCg6FEYy5iax8FZIR4H3lQUgo2V2G4mb0hOy8exVLycvTQnjbVdJsdvj0vWBYdkU_DH8ECj7DmZahtgDIUFqAU-Q4s6xQn7D4jfXfycgag";
+  
+  bool getAccessToken = false;
+  bool getRefreshToken = false;
+
+  if(getAccessToken){
+
+    const char* authorization = "Basic OGVjM2ZlYTJiNDJmNDIzMzhlZDhmM2NhMTdkYzc4MDA6NzI0YzQ2NWM2MWQ0NDU5MDhlYjY2ODEwYWJlMjQyYzU=";
+    
+    Serial.println(ESP.getFreeHeap());
+    
+    
+    if(getRefreshToken){
+      // given CODE (from browser), retrieves refresh token that should be copied into tokens.h
+      http.begin("https://accounts.spotify.com/api/token");
+      http.addHeader("Authorization", authorization);
+      http.addHeader("content-type", "application/x-www-form-urlencoded");
+
+      snprintf(request_buffer, IN_BUFFER_SIZE, "grant_type=authorization_code&code=%s&redirect_uri=http://127.0.0.1:3000", CODE);
+
+      httpCode = http.POST(request_buffer);
+
+      doc.clear();
+      error = deserializeJson(doc, http.getString());
+      http.end();
+      if (error) {
+          Serial.printf("Parse failed: %s", error.c_str());
+          return;
+      }
+      if (httpCode != HTTP_CODE_OK){
+        Serial.printf("Error fetching refresh code: %d",httpCode);
+        Serial.printf(doc["error"]["message"]);
+        return;
+      }
+      strncpy(refresh_token, doc["refresh_token"], 500);
+      Serial.println("woo, success!");
+      Serial.println("Refresh Token: ");
+      Serial.println(refresh_token);
+    }
+    // access token retreival from refresh; to be done every hour
+    else {
+      http.begin("https://accounts.spotify.com/api/token");
+      http.addHeader("content-type", "application/x-www-form-urlencoded");
+      snprintf(request_buffer, IN_BUFFER_SIZE, "grant_type=refresh_token&refresh_token=%s", refresh_token);
+      httpCode = http.POST(request_buffer);
+      
+      doc.clear();
+      error = deserializeJson(doc, http.getString());
+      http.end();
+      if (error) {
+          Serial.printf("Parse failed: %s", error.c_str());
+          return;
+      }
+      if (httpCode != HTTP_CODE_OK){
+        Serial.printf("Error fetching access code: %d",httpCode);
+        Serial.printf(doc["error"]["message"]);
+        return;
+      }
+    }
+    const char* temp = doc["access_token"];
+    
+    snprintf(access_token, 500, "Bearer %s", temp);
+  }
+  Serial.println("woo, got access_token!");
+  Serial.println(access_token);
+  
+
+  //play album 
+
+  //get playback/album info
+
+  strncpy(request_buffer, "https://api.spotify.com/v1/me/player", IN_BUFFER_SIZE);
+  
+  Serial.println("request_buffer formatted");
+  
+  http.begin(request_buffer);
+  http.addHeader("Authorization", access_token);
+  httpCode = http.GET();
+
+  if (httpCode != HTTP_CODE_OK){
+    Serial.printf("Error getting playback info: %d",httpCode);
+  }
+
+  doc.clear();
+  error = deserializeJson(doc, http.getString());
+  http.end();
+  if (error) {
+      Serial.printf("Parse failed: %s", error.c_str());
+      return;
+  }
+
+  if (httpCode != HTTP_CODE_OK){
+    Serial.printf("Error getting playback info: %d",httpCode);
+    Serial.printf(doc["error"]["message"]);
+    return;
+  }
+  Serial.println("about to get album url");
+
+  JsonArray images = doc["item"]["album"]["images"];
+  bool found = false;
+  for(int i = 0; i < images.size(); i++){
+    if(images[i]["height"].as<int>() < 100){
+      strcpy(album_url, images[i]["url"]);
+      found = true;
+      break;
+    }
+  }
+  if(!found){
+    strcpy(album_url, doc["item"]["album"]["images"][0]["url"]);
+  }
+
+  Serial.printf("woo, got album url! %s\n", album_url);
+
+  //begin SD
   if (!SD.begin(SD_CS, spi)){
     Serial.println("sd.begin() failed :(");
     return;
   }
+  println("sd began!");
 
-  println("sd began");
-  
   http.begin(album_url);
-  // http.addHeader("Authorization", token);
-  int httpCode = http.GET();
-
+  httpCode = http.GET();
   println("http gotten");
-
   if (httpCode == HTTP_CODE_OK){
-    File file = SD.open("/test.jpeg", FILE_WRITE);
+    char filename[500];
+    snprintf(filename, 500, "/%s.jpeg", album_id);
+    File file = SD.open(filename, FILE_WRITE);
     http.writeToStream(&file);
     file.close();
   }
